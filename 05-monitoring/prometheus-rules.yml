@@ -1,0 +1,56 @@
+groups:
+  - name: node_alerts
+    rules:
+      # 注意：必须带 by (instance)。不带的话三台机器会被 avg 成一条曲线、一个值，
+      #    告警注解里的 {{ $labels.instance }} 也是空的；更危险的是
+      #    一台机器满载会被另一台空闲"平均掉"，直接漏报。
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "节点 CPU 使用率超过 90% (实例 {{ $labels.instance }})"
+          description: "{{ $labels.instance }} 的 CPU 使用率已超过 90%，当前值：{{ $value }}%"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "节点内存使用率超过 90% (实例 {{ $labels.instance }})"
+          description: "{{ $labels.instance }} 的内存使用率已超过 90%"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "根分区磁盘可用空间不足 10% (实例 {{ $labels.instance }})"
+          description: "{{ $labels.instance }} 磁盘 / 使用率已超过 90%"
+
+      # 时钟同步：它是"所有指标是否可信"的前提，却最容易被忽略。
+      # 真实案例：宿主机夜里休眠，两台 VM 的时钟慢了 11 小时 36 分；chrony 只能按
+      # 最大 8.33% 的速率缓慢追赶，追赶期间机器时间比真实时间快，rate() 算出了 1.08
+      # （物理上不可能 >1），于是 CPU 使用率查出来是负数。
+      # 判据用 node_timex_sync_status（0=未同步）最灵敏：缓慢校时(slew)期间
+      # node_timex_offset_seconds 反而读数为 0，只靠它会漏掉。
+      - alert: NodeClockNotSynced
+        expr: node_timex_sync_status != 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "节点时钟未同步 (实例 {{ $labels.instance }})"
+          description: "{{ $labels.instance }} 的时钟未与 NTP 同步，rate() 类指标会失真（可能出现负的 CPU 使用率），请检查 chrony"
+
+      - alert: NodeDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "节点失联 (实例 {{ $labels.instance }})"
+          description: "{{ $labels.instance }} 已无法抓取指标超过 2 分钟"

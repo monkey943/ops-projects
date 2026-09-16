@@ -1,0 +1,14 @@
+# Ansible 主机清单
+# 控制机：node3（192.168.88.102）
+# 完整操作步骤见 docs/02-操作手册/2.3-Ansible批量部署.md
+
+[webservers]
+node1 ansible_host=192.168.88.100
+node2 ansible_host=192.168.88.101
+
+[monitor]
+node3 ansible_host=192.168.88.102
+
+[all:vars]
+ansible_user=root
+ansible_python_interpreter=/usr/bin/python3

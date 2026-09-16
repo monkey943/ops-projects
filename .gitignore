@@ -1,0 +1,35 @@
+# 日志文件
+*.log
+*.log.*
+
+# 备份文件
+*.bak
+*.backup
+*.sql
+*.tar.gz
+*.zip
+
+# 临时文件
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 配置文件（敏感信息）
+*.env
+*.conf.local
+.my.cnf
+
+# 编辑器目录
+.vscode/
+.idea/
+.project
+.settings/
+
+# 系统目录
+__pycache__/
+node_modules/
+
+# Ansible 临时文件
+*.retry

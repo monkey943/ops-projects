@@ -1,0 +1,106 @@
+---
+# LNMP 一键部署 Playbook
+# 控制机：node3    被管节点：node1 / node2（Rocky Linux 9）
+# 完整操作步骤见 docs/02-操作手册/2.3-Ansible批量部署.md
+#
+# 用法：
+#   ansible-playbook playbooks/deploy_lnmp.yml --syntax-check
+#   ansible-playbook playbooks/deploy_lnmp.yml --check --diff
+#   ansible-playbook playbooks/deploy_lnmp.yml --limit node1
+#   ansible-playbook playbooks/deploy_lnmp.yml
+#
+# 幂等性验证：连续执行两次，第二次的 PLAY RECAP 应为 changed=0
+
+- name: Deploy LNMP Stack
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: 1. 安装 LNMP 软件包
+      dnf:
+        name:
+          - nginx
+          - php
+          - php-fpm
+          - php-mysqlnd
+          - php-gd
+          - php-xml
+          - php-mbstring
+          - firewalld
+        state: present
+
+    - name: 2. 创建网站根目录
+      file:
+        path: /var/www/html
+        state: directory
+        owner: nginx
+        group: nginx
+        mode: '0755'
+
+    - name: 3. 部署测试页（含主机名，便于验证负载均衡轮询）
+      copy:
+        dest: /var/www/html/index.php
+        mode: '0644'
+        content: |
+          <?php
+          echo "<h1>LNMP 站点正常</h1>";
+          echo "当前节点主机名：<b>" . gethostname() . "</b><br>";
+          echo "服务器时间：" . date("Y-m-d H:i:s") . "<br>";
+          echo "PHP 版本：" . phpversion() . "<br>";
+      notify: reload nginx
+
+    - name: 4. 部署 Nginx 虚拟主机配置
+      copy:
+        src: files/blog.conf
+        dest: /etc/nginx/conf.d/blog.conf
+        mode: '0644'
+      notify: reload nginx
+
+    - name: 5. 配置 PHP-FPM 运行用户
+      lineinfile:
+        path: /etc/php-fpm.d/www.conf
+        regexp: '^user = '
+        line: 'user = nginx'
+      notify: restart php-fpm
+
+    - name: 6. 配置 PHP-FPM 运行组
+      lineinfile:
+        path: /etc/php-fpm.d/www.conf
+        regexp: '^group = '
+        line: 'group = nginx'
+      notify: restart php-fpm
+
+    - name: 7. 配置 PHP-FPM 监听地址
+      lineinfile:
+        path: /etc/php-fpm.d/www.conf
+        regexp: '^listen = '
+        line: 'listen = 127.0.0.1:9000'
+      notify: restart php-fpm
+
+    - name: 8. 启动并设置开机自启
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - nginx
+        - php-fpm
+
+    - name: 9. 放行 HTTP 端口
+      firewalld:
+        service: http
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+  handlers:
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: restart php-fpm
+      systemd:
+        name: php-fpm
+        state: restarted
